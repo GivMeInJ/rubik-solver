@@ -20,9 +20,9 @@ def test_edge2_index_solved_in_range():
     idx = edge2_index(SOLVED)
     assert 0 <= idx < 42577920  # P(12,6) * 2^6
 
-def test_edge2_index_deterministic():
-    # Same state always gives same index
-    assert edge2_index(SOLVED) == edge2_index(SOLVED)
+def test_edge2_index_solved_is_nonzero():
+    # Regression: relative-rank encoding wrongly gave 0; proper P(12,6) gives 23,442,432
+    assert edge2_index(SOLVED) == 23_442_432
 
 def test_corner_index_unique_after_move():
     state_r = apply_move(SOLVED, "R")
