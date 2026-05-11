@@ -36,6 +36,37 @@ def test_edge2_index_unique_after_move():
     state_r = apply_move(SOLVED, "R")
     assert edge2_index(state_r) != edge2_index(SOLVED)
 
+import tempfile, os
+from rubik_solver.solver.pattern_db import PatternDB
+
+def test_pattern_db_build_small():
+    """depth=2까지 BFS해도 SOLVED=0을 포함해야 함"""
+    db = PatternDB(max_depth=2)
+    assert db.corner_db[corner_index(SOLVED)] == 0
+    assert db.edge1_db[edge1_index(SOLVED)] == 0
+    assert db.edge2_db[edge2_index(SOLVED)] == 0
+
+def test_pattern_db_heuristic_solved():
+    db = PatternDB(max_depth=2)
+    assert db.h(SOLVED) == 0
+
+def test_pattern_db_heuristic_one_move():
+    db = PatternDB(max_depth=2)
+    state = apply_move(SOLVED, "R")
+    assert db.h(state) >= 1
+
+def test_pattern_db_save_load(tmp_path):
+    db = PatternDB(max_depth=1)
+    db.save(str(tmp_path / "corner.pkl"),
+            str(tmp_path / "e1.pkl"),
+            str(tmp_path / "e2.pkl"))
+    db2 = PatternDB.load(str(tmp_path / "corner.pkl"),
+                         str(tmp_path / "e1.pkl"),
+                         str(tmp_path / "e2.pkl"))
+    assert db2.h(SOLVED) == 0
+    assert db2.corner_db[corner_index(SOLVED)] == 0
+
+
 def test_edge_index_no_collisions():
     """Different cubelets in slots must produce different indices (no relative-rank collisions)"""
     # Artificially create two states with different cubelets in slots 6-11
