@@ -11,18 +11,22 @@ def corner_index(state: CubeState) -> int:
 
 
 def _partial_edge_index(state: CubeState, edge_slots: list[int]) -> int:
-    """엣지 6개 슬롯의 위치+방향을 인코딩. 범위: 0 ~ 6!*2^6-1 (≤ P(12,6)*2^6-1)
+    """엣지 6개 슬롯의 위치+방향을 인코딩.
 
-    각 슬롯의 큐블릿 값들을 상대 순위(relative rank)로 정규화한 뒤 Lehmer 인코딩.
-    SOLVED 상태에서는 항상 0이 되는 것을 보장한다.
+    각 슬롯의 cubelet 값(0-11)을 12개 원소 우주에서 부분 순열 순위로 인코딩.
+    범위: 0 ~ P(12,6)*2^6-1 = 42,577,919
     """
     chosen = [state.edge_perm[i] for i in edge_slots]
 
-    # 상대 순위 계산: sorted order 기준 각 원소의 위치
-    sorted_chosen = sorted(chosen)
-    relative = [sorted_chosen.index(v) for v in chosen]
+    # P(12,6) partial permutation rank over 12-element universe
+    n = 12
+    used = [False] * n
+    perm_idx = 0
+    for k, v in enumerate(chosen):
+        cnt = sum(1 for j in range(v) if not used[j])
+        perm_idx = perm_idx * (n - k) + cnt
+        used[v] = True
 
-    perm_idx = lehmer_encode(relative)   # 0 ~ 6!-1 = 719
     orient_idx = mixed_radix([state.edge_orient[i] for i in edge_slots], base=2)
     return perm_idx * (2 ** 6) + orient_idx
 
