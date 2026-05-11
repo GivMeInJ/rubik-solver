@@ -26,3 +26,20 @@ def test_from_facelets_solved():
 def test_from_facelets_wrong_length():
     with pytest.raises(ValueError, match="54"):
         from_facelets("W" * 53)
+
+
+def test_from_facelets_solved_group_constraints():
+    facelets_solved = "W"*9 + "R"*9 + "G"*9 + "Y"*9 + "O"*9 + "B"*9
+    state = from_facelets(facelets_solved)
+    assert sum(state.corner_orient) % 3 == 0
+    assert sum(state.edge_orient) % 2 == 0
+    assert len(state.corner_perm) == 8
+    assert len(state.edge_perm) == 12
+    assert sorted(state.corner_perm) == list(range(8))
+    assert sorted(state.edge_perm) == list(range(12))
+
+
+def test_from_facelets_invalid_color():
+    invalid = "X"*9 + "R"*9 + "G"*9 + "Y"*9 + "O"*9 + "B"*9
+    with pytest.raises((KeyError, ValueError)):
+        from_facelets(invalid)

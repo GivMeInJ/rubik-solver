@@ -11,7 +11,6 @@ Coordinate system:
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Sequence
 
 
 # ---------------------------------------------------------------------------
@@ -26,8 +25,8 @@ _CORNER_FACELETS = [
     (0,  36, 47),   # 2 ULB: U[0], L[0], B[2]
     (2,  45, 11),   # 3 UBR: U[2], B[0], R[2]
     (29, 26, 15),   # 4 DFR: D[2], F[8], R[6]
-    (27, 24, 42),   # 5 DLF: D[0], F[6], L[6] -- D[0]=27
-    (33, 53, 39),   # 6 DBL: D[6], B[8], L[3] -- L[3]=39
+    (27, 24, 44),   # 5 DLF: D[0], F[6], L[8] -- L[8]=44
+    (33, 53, 42),   # 6 DBL: D[6], B[8], L[6] -- L[6]=42
     (35, 17, 51),   # 7 DRB: D[8], R[8], B[6]
 ]
 
@@ -106,6 +105,10 @@ class CubeState:
         object.__setattr__(self, "corner_orient", tuple(self.corner_orient))
         object.__setattr__(self, "edge_perm",     tuple(self.edge_perm))
         object.__setattr__(self, "edge_orient",   tuple(self.edge_orient))
+        if len(self.corner_perm) != 8:
+            raise ValueError(f"corner_perm must have 8 elements, got {len(self.corner_perm)}")
+        if len(self.edge_perm) != 12:
+            raise ValueError(f"edge_perm must have 12 elements, got {len(self.edge_perm)}")
 
 
 # ---------------------------------------------------------------------------
@@ -113,10 +116,10 @@ class CubeState:
 # ---------------------------------------------------------------------------
 
 SOLVED = CubeState(
-    corner_perm=list(range(8)),
-    corner_orient=[0] * 8,
-    edge_perm=list(range(12)),
-    edge_orient=[0] * 12,
+    corner_perm=tuple(range(8)),
+    corner_orient=(0,) * 8,
+    edge_perm=tuple(range(12)),
+    edge_orient=(0,) * 12,
 )
 
 
@@ -170,9 +173,9 @@ def from_facelets(facelets: str) -> CubeState:
         if colors[0] in ud_colors:
             orient = 0
         elif colors[1] in ud_colors:
-            orient = 2
-        else:
             orient = 1
+        else:
+            orient = 2
         corner_orient[slot] = orient
 
     # --- Edges ---
