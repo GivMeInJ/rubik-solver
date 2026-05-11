@@ -107,8 +107,12 @@ class CubeState:
         object.__setattr__(self, "edge_orient",   tuple(self.edge_orient))
         if len(self.corner_perm) != 8:
             raise ValueError(f"corner_perm must have 8 elements, got {len(self.corner_perm)}")
+        if len(self.corner_orient) != 8:
+            raise ValueError(f"corner_orient must have 8 elements, got {len(self.corner_orient)}")
         if len(self.edge_perm) != 12:
             raise ValueError(f"edge_perm must have 12 elements, got {len(self.edge_perm)}")
+        if len(self.edge_orient) != 12:
+            raise ValueError(f"edge_orient must have 12 elements, got {len(self.edge_orient)}")
 
 
 # ---------------------------------------------------------------------------
