@@ -1,6 +1,11 @@
 from __future__ import annotations
-from rubik_solver.model.cube import CubeState
+import os
+import pickle
+from collections import deque
+
+from rubik_solver.model.cube import CubeState, SOLVED
 from rubik_solver.model.group import lehmer_encode, mixed_radix
+from rubik_solver.model.moves import apply_move, MOVE_NAMES
 
 _EDGE1_SLOTS = (0, 1, 2, 3, 4, 5)
 _EDGE2_SLOTS = (6, 7, 8, 9, 10, 11)
@@ -44,12 +49,6 @@ def edge1_index(state: CubeState) -> int:
 def edge2_index(state: CubeState) -> int:
     """엣지 슬롯 6~11번 기반 인덱스"""
     return _partial_edge_index(state, _EDGE2_SLOTS)
-
-
-import pickle
-from collections import deque
-from rubik_solver.model.cube import SOLVED
-from rubik_solver.model.moves import apply_move, MOVE_NAMES
 
 
 class PatternDB:
@@ -117,7 +116,6 @@ class PatternDB:
     def load_or_build(cls, corner_path: str, edge1_path: str,
                       edge2_path: str) -> "PatternDB":
         """캐시 파일이 있으면 로드, 없으면 전체 BFS 생성 후 저장."""
-        import os
         if all(os.path.exists(p) for p in [corner_path, edge1_path, edge2_path]):
             print("패턴 DB 로드 중...", end=" ", flush=True)
             db = cls.load(corner_path, edge1_path, edge2_path)
