@@ -2,21 +2,35 @@ from __future__ import annotations
 import os
 import pickle
 from collections import deque
+from multiprocessing import Pool
 
 from rubik_solver.model.cube import CubeState, SOLVED
-from rubik_solver.model.group import lehmer_encode, mixed_radix
 from rubik_solver.model.moves import apply_move, MOVE_NAMES
 
-_EDGE1_CUBELETS = tuple(range(6))      # cubelets 0-5
-_EDGE2_CUBELETS = tuple(range(6, 12))  # cubelets 6-11
-_CORNER_ORIENT_MULT = 3 ** 7     # 2187
-_EDGE_ORIENT_MULT   = 2 ** 6     # 64
+_EDGE1_CUBELETS = tuple(range(6))
+_EDGE2_CUBELETS = tuple(range(6, 12))
+_CORNER_ORIENT_MULT = 3 ** 7
+_EDGE_ORIENT_MULT   = 2 ** 6
+
+# Precomputed rank tables: _RC8[mask][v]  = count of values < v not yet used (8-element universe)
+#                          _RC12[mask][v] = same for 12-element universe
+# Replaces the O(v) generator loop with O(1) table lookup.
+_RC8  = [[v - bin(mask & ((1 << v) - 1)).count('1') for v in range(8)]
+         for mask in range(256)]
+_RC12 = [[v - bin(mask & ((1 << v) - 1)).count('1') for v in range(12)]
+         for mask in range(4096)]
 
 
 def corner_index(state: CubeState) -> int:
-    """코너 8개의 위치+방향을 단일 정수로 인코딩. 범위: 0 ~ 8!*3^7-1"""
-    perm_idx = lehmer_encode(list(state.corner_perm))
-    orient_idx = mixed_radix(list(state.corner_orient[:7]), base=3)
+    mask = 0
+    perm_idx = 0
+    for k in range(8):
+        v = state.corner_perm[k]
+        perm_idx = perm_idx * (8 - k) + _RC8[mask][v]
+        mask |= (1 << v)
+    orient_idx = 0
+    for d in state.corner_orient[:7]:
+        orient_idx = orient_idx * 3 + d
     return perm_idx * _CORNER_ORIENT_MULT + orient_idx
 
 
@@ -34,17 +48,16 @@ def _partial_edge_index(state: CubeState, target_cubelets: tuple) -> int:
         slot_of[c] = slot
         orient_of[c] = state.edge_orient[slot]
 
-    # P(12,6) partial permutation rank over 12-element universe
-    n = 12
-    used = [False] * n
+    mask = 0
     perm_idx = 0
     for k, c in enumerate(target_cubelets):
         v = slot_of[c]
-        cnt = sum(1 for j in range(v) if not used[j])
-        perm_idx = perm_idx * (n - k) + cnt
-        used[v] = True
+        perm_idx = perm_idx * (12 - k) + _RC12[mask][v]
+        mask |= (1 << v)
 
-    orient_idx = mixed_radix([orient_of[c] for c in target_cubelets], base=2)
+    orient_idx = 0
+    for c in target_cubelets:
+        orient_idx = orient_idx * 2 + orient_of[c]
     return perm_idx * _EDGE_ORIENT_MULT + orient_idx
 
 
@@ -58,38 +71,51 @@ def edge2_index(state: CubeState) -> int:
     return _partial_edge_index(state, _EDGE2_CUBELETS)
 
 
+def _bfs_build(args: tuple) -> bytes:
+    """멀티프로세싱용 최상위 함수: BFS로 패턴 DB 하나를 빌드해 반환."""
+    size, fn_name, max_depth = args
+    fn_map = {'corner': corner_index, 'edge1': edge1_index, 'edge2': edge2_index}
+    index_fn = fn_map[fn_name]
+
+    db = bytearray(b'\xff' * size)
+    start_idx = index_fn(SOLVED)
+    db[start_idx] = 0
+    queue: deque = deque([(SOLVED, 0)])
+    while queue:
+        state, depth = queue.popleft()
+        if max_depth is not None and depth >= max_depth:
+            continue
+        for mv in MOVE_NAMES:
+            next_state = apply_move(state, mv)
+            idx = index_fn(next_state)
+            if db[idx] == 255:
+                db[idx] = depth + 1
+                queue.append((next_state, depth + 1))
+    return bytes(db)
+
+
 class PatternDB:
     """BFS로 목표 상태에서 역방향 탐색해 패턴 DB 구축.
 
-    max_depth: 테스트용 BFS 깊이 제한 (None이면 완전 생성 — 수 분 소요).
+    max_depth: 테스트용 BFS 깊이 제한 (None이면 완전 생성).
+    전체 빌드 시 3개 DB를 병렬로 구축한다.
     255 = 미방문 sentinel.
     """
     CORNER_SIZE = 88_179_840   # 8! * 3^7
     EDGE_SIZE   = 42_577_920   # P(12,6) * 2^6
 
     def __init__(self, max_depth: int | None = None):
-        self.corner_db = bytearray(b'\xff' * self.CORNER_SIZE)
-        self.edge1_db  = bytearray(b'\xff' * self.EDGE_SIZE)
-        self.edge2_db  = bytearray(b'\xff' * self.EDGE_SIZE)
-        self._bfs(self.corner_db, corner_index, max_depth)
-        self._bfs(self.edge1_db,  edge1_index,  max_depth)
-        self._bfs(self.edge2_db,  edge2_index,  max_depth)
-
-    @staticmethod
-    def _bfs(db: bytearray, index_fn, max_depth: int | None) -> None:
-        start_idx = index_fn(SOLVED)
-        db[start_idx] = 0
-        queue: deque = deque([(SOLVED, 0)])
-        while queue:
-            state, depth = queue.popleft()
-            if max_depth is not None and depth >= max_depth:
-                continue
-            for mv in MOVE_NAMES:
-                next_state = apply_move(state, mv)
-                idx = index_fn(next_state)
-                if db[idx] == 255:
-                    db[idx] = depth + 1
-                    queue.append((next_state, depth + 1))
+        args = [
+            (self.CORNER_SIZE, 'corner', max_depth),
+            (self.EDGE_SIZE,   'edge1',  max_depth),
+            (self.EDGE_SIZE,   'edge2',  max_depth),
+        ]
+        if max_depth is None:
+            with Pool(3) as p:
+                results = p.map(_bfs_build, args)
+        else:
+            results = [_bfs_build(a) for a in args]
+        self.corner_db, self.edge1_db, self.edge2_db = [bytearray(r) for r in results]
 
     def h(self, state: CubeState) -> int:
         """admissible 휴리스틱: 세 DB 중 최댓값 (255=미방문 → 20으로 대체)"""
@@ -122,13 +148,13 @@ class PatternDB:
     @classmethod
     def load_or_build(cls, corner_path: str, edge1_path: str,
                       edge2_path: str) -> "PatternDB":
-        """캐시 파일이 있으면 로드, 없으면 전체 BFS 생성 후 저장."""
+        """캐시 파일이 있으면 로드, 없으면 병렬 BFS 생성 후 저장."""
         if all(os.path.exists(p) for p in [corner_path, edge1_path, edge2_path]):
             print("패턴 DB 로드 중...", end=" ", flush=True)
             db = cls.load(corner_path, edge1_path, edge2_path)
             print("완료")
             return db
-        print("패턴 DB 생성 중... (수 분 소요)")
+        print("패턴 DB 생성 중... (3-way 병렬 빌드, 10~20분 소요)")
         db = cls(max_depth=None)
         db.save(corner_path, edge1_path, edge2_path)
         print("패턴 DB 저장 완료")
