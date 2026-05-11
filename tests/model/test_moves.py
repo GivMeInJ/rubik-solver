@@ -1,4 +1,5 @@
-from rubik_solver.model.cube import SOLVED, is_solved, CubeState
+import pytest
+from rubik_solver.model.cube import SOLVED, is_solved
 from rubik_solver.model.moves import apply_move, MOVE_NAMES
 
 def test_all_18_moves_defined():
@@ -45,3 +46,24 @@ def test_r_prime_equals_r3():
     s_r3 = state
     s_rprime = apply_move(SOLVED, "R'")
     assert s_r3 == s_rprime
+
+
+@pytest.mark.parametrize("face", ["U", "D", "R", "L", "F", "B"])
+def test_face_order_4(face):
+    state = SOLVED
+    for _ in range(4):
+        state = apply_move(state, face)
+    assert is_solved(state)
+
+
+@pytest.mark.parametrize("face", ["U", "D", "R", "L", "F", "B"])
+def test_face_inverse(face):
+    state = apply_move(apply_move(SOLVED, face), face + "'")
+    assert is_solved(state)
+
+
+def test_apply_move_invalid():
+    with pytest.raises(ValueError, match="Unknown move"):
+        apply_move(SOLVED, "X")
+    with pytest.raises(ValueError, match="Unknown move"):
+        apply_move(SOLVED, "U2'")
