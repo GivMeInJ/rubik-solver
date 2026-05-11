@@ -25,14 +25,16 @@ def test_compose_perm_identity():
     assert compose_perm(identity, p) == p
 
 def test_compose_perm():
-    # p=[1,2,0], q=[2,0,1] → compose_perm(p,q): result[i] = q[p[i]]
-    p = [1, 2, 0]
-    q = [2, 0, 1]
-    result = compose_perm(p, q)
-    assert result == [q[p[i]] for i in range(3)]
+    # p=[1,2,0], q=[2,0,1]: q[p[0]]=q[1]=0, q[p[1]]=q[2]=1, q[p[2]]=q[0]=2 → [0,1,2]
+    assert compose_perm([1, 2, 0], [2, 0, 1]) == [0, 1, 2]
 
 def test_invert_perm():
-    p = [1, 2, 0]
+    p = [3, 0, 2, 1]
     inv = invert_perm(p)
-    identity = compose_perm(p, inv)
-    assert identity == list(range(len(p)))
+    assert compose_perm(p, inv) == list(range(len(p)))
+    assert compose_perm(inv, p) == list(range(len(p)))
+
+def test_lehmer_bijection():
+    import itertools
+    ranks = sorted(lehmer_encode(list(p)) for p in itertools.permutations(range(4)))
+    assert ranks == list(range(24))

@@ -23,7 +23,7 @@ def mixed_radix(digits: List[int], base: int) -> int:
 
 def compose_perm(p: List[int], q: List[int]) -> List[int]:
     """순열 합성: result[i] = q[p[i]]  (p 먼저 적용, 그 다음 q)"""
-    return [q[p[i]] for i in range(len(p))]
+    return [q[x] for x in p]
 
 
 def invert_perm(p: List[int]) -> List[int]:
