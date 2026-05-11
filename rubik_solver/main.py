@@ -4,12 +4,14 @@
 사용법:
   python -m rubik_solver.main <54자 큐브 문자열>
   python -m rubik_solver.main --demo
-  python -m rubik_solver.main --demo --export solution.html
+  python -m rubik_solver.main --random 5
+  python -m rubik_solver.main --random 5 --export solution.html
 
 입력 형식: U면 9칸 → R → F → D → L → B (각 9칸, 총 54자)
 색상 문자: W(흰) Y(노랑) R(빨강) O(주황) B(파랑) G(초록)
 """
 import argparse
+import random
 import time
 from pathlib import Path
 
@@ -36,15 +38,31 @@ def _demo_facelets() -> str:
     return state_to_facelets(state)
 
 
+def _random_facelets(n: int) -> tuple[str, list[str]]:
+    from rubik_solver.model.cube import SOLVED
+    from rubik_solver.model.moves import MOVE_NAMES
+    from rubik_solver.display.ascii_cube import state_to_facelets
+    scramble = random.choices(MOVE_NAMES, k=n)
+    state = SOLVED
+    for mv in scramble:
+        state = apply_move(state, mv)
+    return state_to_facelets(state), scramble
+
+
 def main():
     parser = argparse.ArgumentParser(description="루빅스 큐브 IDA* 솔버")
     parser.add_argument("facelets", nargs="?", help="54자 큐브 상태 문자열")
     parser.add_argument("--demo", action="store_true", help="데모 큐브로 실행")
+    parser.add_argument("--random", metavar="N", type=int, help="N수 랜덤 스크램블로 실행")
     parser.add_argument("--export", metavar="PATH", help="풀이 HTML 파일 경로 (예: solution.html)")
     parser.add_argument("--no-db", action="store_true", help="패턴 DB 없이 실행 (느림, 테스트용)")
     args = parser.parse_args()
 
-    if args.demo:
+    if args.random is not None:
+        facelets_str, scramble = _random_facelets(args.random)
+        print(f"[랜덤 {args.random}수 스크램블] {' '.join(scramble)}")
+        print(f"큐브 상태: {facelets_str}")
+    elif args.demo:
         facelets_str = _demo_facelets()
         print(f"[데모] 섞인 큐브 상태: {facelets_str}")
     elif args.facelets:

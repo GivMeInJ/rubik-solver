@@ -83,3 +83,25 @@ def test_edge_index_no_collisions():
     )
     # With relative rank, both would give index 0; with proper P(12,6), they must differ
     assert edge2_index(state_a) != edge2_index(state_b)
+
+
+def test_edge2_index_changes_after_u_on_r_state():
+    """Regression: slot-tracking incorrectly gave edge2_index(R)==edge2_index(R U)
+    because U only moves slots 0-3 and slot-tracking edge2 watches slots 6-11.
+    Cubelet-tracking fixes this: cubelet 8 moves from slot 0 to slot 1 under U."""
+    from rubik_solver.model.moves import apply_move
+    r_state = apply_move(SOLVED, "R")
+    ru_state = apply_move(r_state, "U")
+    assert edge2_index(r_state) != edge2_index(ru_state)
+
+
+def test_pattern_db_admissible_rur_prime_u_prime():
+    """Regression: slot-tracking BFS gave h=20 for R U R' U' (4-move state)
+    because RU was never enqueued (edge2_index(R)==edge2_index(RU) under old scheme).
+    Cubelet-tracking fixes admissibility: h must be <= 4."""
+    from rubik_solver.model.moves import apply_move
+    state = SOLVED
+    for mv in ["R", "U", "R'", "U'"]:
+        state = apply_move(state, mv)
+    db = PatternDB(max_depth=5)
+    assert db.h(state) <= 4
