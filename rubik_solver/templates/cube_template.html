@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>루빅스 큐브 풀이 시각화</title>
+<style>
+  body { margin: 0; background: #1a1a2e; color: #eee; font-family: monospace; }
+  #canvas-container { width: 100vw; height: 70vh; }
+  #controls {
+    position: fixed; bottom: 0; width: 100%; background: #16213e;
+    padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+  }
+  button {
+    background: #0f3460; color: #fff; border: none; border-radius: 6px;
+    padding: 8px 16px; cursor: pointer; font-size: 16px;
+  }
+  button:hover { background: #e94560; }
+  #step-info { flex: 1; font-size: 15px; }
+  #speed-label { font-size: 13px; color: #aaa; }
+  input[type=range] { width: 120px; }
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+<div id="controls">
+  <button id="btn-prev">◀ 이전</button>
+  <button id="btn-play">▶ 재생</button>
+  <button id="btn-next">▶▶ 다음</button>
+  <div id="step-info">Step 0 / 0</div>
+  <span id="speed-label">속도:</span>
+  <input type="range" id="speed" min="100" max="1000" value="400" step="100">
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const CUBE_DATA = __CUBE_DATA__;
+
+const COLOR_MAP = {
+  W: 0xffffff, Y: 0xffff00, R: 0xff2020,
+  O: 0xff8000, B: 0x2266cc, G: 0x22aa22
+};
+const BLACK = 0x111111;
+
+function getFaceColor(facelets, x, y, z, faceIdx) {
+  const faces = [
+    {offset: 0,  axis:'y', val:1,  row: (dz)=>1-dz, col: (dx)=>1+dx},
+    {offset: 27, axis:'y', val:-1, row: (dz)=>1+dz, col: (dx)=>1+dx},
+    {offset: 9,  axis:'x', val:1,  row: (dy)=>1-dy, col: (dz)=>1-dz},
+    {offset: 36, axis:'x', val:-1, row: (dy)=>1-dy, col: (dz)=>1+dz},
+    {offset: 18, axis:'z', val:1,  row: (dy)=>1-dy, col: (dx)=>1+dx},
+    {offset: 45, axis:'z', val:-1, row: (dy)=>1-dy, col: (dx)=>1-dx},
+  ];
+  const f = faces[faceIdx];
+  let row, col;
+  if (f.axis === 'y') { row = f.row(z); col = f.col(x); }
+  else if (f.axis === 'x') { row = f.row(y); col = f.col(z); }
+  else { row = f.row(y); col = f.col(x); }
+  const idx = f.offset + row * 3 + col;
+  return COLOR_MAP[facelets[idx]] || BLACK;
+}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+camera.position.set(4, 4, 6);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+const container = document.getElementById('canvas-container');
+renderer.setSize(container.clientWidth, container.clientHeight);
+camera.aspect = container.clientWidth / container.clientHeight;
+camera.updateProjectionMatrix();
+container.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight.position.set(5, 10, 7);
+scene.add(dirLight);
+
+let cubies = {};
+function buildCubies(facelets) {
+  Object.values(cubies).forEach(c => scene.remove(c));
+  cubies = {};
+  for (let x = -1; x <= 1; x++) {
+    for (let y = -1; y <= 1; y++) {
+      for (let z = -1; z <= 1; z++) {
+        const geo = new THREE.BoxGeometry(0.93, 0.93, 0.93);
+        const materials = [];
+        const faceMap = [
+          y === 1 ? 0 : -1,
+          y === -1 ? 1 : -1,
+          x === 1 ? 2 : -1,
+          x === -1 ? 3 : -1,
+          z === 1 ? 4 : -1,
+          z === -1 ? 5 : -1,
+        ];
+        for (let fi = 0; fi < 6; fi++) {
+          const faceIdx = faceMap[fi];
+          const color = faceIdx >= 0 ? getFaceColor(facelets, x, y, z, faceIdx) : BLACK;
+          materials.push(new THREE.MeshStandardMaterial({ color }));
+        }
+        const mesh = new THREE.Mesh(geo, materials);
+        mesh.position.set(x, y, z);
+        scene.add(mesh);
+        cubies[`${x},${y},${z}`] = mesh;
+      }
+    }
+  }
+}
+
+let currentStep = 0;
+let isPlaying = false;
+
+const allFacelets = [CUBE_DATA.initial];
+if (CUBE_DATA.step_facelets) {
+  CUBE_DATA.step_facelets.forEach(f => allFacelets.push(f));
+}
+
+function updateStepInfo() {
+  const total = CUBE_DATA.moves.length;
+  const mv = currentStep > 0 ? CUBE_DATA.moves[currentStep - 1] : '-';
+  document.getElementById('step-info').textContent =
+    `Step ${currentStep} / ${total}  :  ${mv}`;
+}
+
+function goToStep(step) {
+  currentStep = Math.max(0, Math.min(step, CUBE_DATA.moves.length));
+  buildCubies(allFacelets[currentStep]);
+  updateStepInfo();
+}
+
+document.getElementById('btn-prev').onclick = () => { goToStep(currentStep - 1); };
+document.getElementById('btn-next').onclick = () => { goToStep(currentStep + 1); };
+document.getElementById('speed').oninput = e => { animSpeed = parseInt(e.target.value); };
+
+let animSpeed = 400;
+let playTimer = null;
+document.getElementById('btn-play').onclick = () => {
+  isPlaying = !isPlaying;
+  document.getElementById('btn-play').textContent = isPlaying ? '⏸ 일시정지' : '▶ 재생';
+  if (isPlaying) {
+    function playNext() {
+      if (!isPlaying || currentStep >= CUBE_DATA.moves.length) {
+        isPlaying = false;
+        document.getElementById('btn-play').textContent = '▶ 재생';
+        return;
+      }
+      goToStep(currentStep + 1);
+      playTimer = setTimeout(playNext, animSpeed);
+    }
+    playNext();
+  } else {
+    clearTimeout(playTimer);
+  }
+};
+
+goToStep(0);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>
