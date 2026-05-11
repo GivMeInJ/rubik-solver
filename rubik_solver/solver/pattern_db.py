@@ -2,7 +2,6 @@ from __future__ import annotations
 import os
 import pickle
 from collections import deque
-from multiprocessing import Pool
 
 from rubik_solver.model.cube import CubeState, SOLVED
 from rubik_solver.model.moves import apply_move, MOVE_NAMES
@@ -71,51 +70,38 @@ def edge2_index(state: CubeState) -> int:
     return _partial_edge_index(state, _EDGE2_CUBELETS)
 
 
-def _bfs_build(args: tuple) -> bytes:
-    """멀티프로세싱용 최상위 함수: BFS로 패턴 DB 하나를 빌드해 반환."""
-    size, fn_name, max_depth = args
-    fn_map = {'corner': corner_index, 'edge1': edge1_index, 'edge2': edge2_index}
-    index_fn = fn_map[fn_name]
-
-    db = bytearray(b'\xff' * size)
-    start_idx = index_fn(SOLVED)
-    db[start_idx] = 0
-    queue: deque = deque([(SOLVED, 0)])
-    while queue:
-        state, depth = queue.popleft()
-        if max_depth is not None and depth >= max_depth:
-            continue
-        for mv in MOVE_NAMES:
-            next_state = apply_move(state, mv)
-            idx = index_fn(next_state)
-            if db[idx] == 255:
-                db[idx] = depth + 1
-                queue.append((next_state, depth + 1))
-    return bytes(db)
-
-
 class PatternDB:
     """BFS로 목표 상태에서 역방향 탐색해 패턴 DB 구축.
 
     max_depth: 테스트용 BFS 깊이 제한 (None이면 완전 생성).
-    전체 빌드 시 3개 DB를 병렬로 구축한다.
     255 = 미방문 sentinel.
     """
     CORNER_SIZE = 88_179_840   # 8! * 3^7
     EDGE_SIZE   = 42_577_920   # P(12,6) * 2^6
 
     def __init__(self, max_depth: int | None = None):
-        args = [
-            (self.CORNER_SIZE, 'corner', max_depth),
-            (self.EDGE_SIZE,   'edge1',  max_depth),
-            (self.EDGE_SIZE,   'edge2',  max_depth),
-        ]
-        if max_depth is None:
-            with Pool(3) as p:
-                results = p.map(_bfs_build, args)
-        else:
-            results = [_bfs_build(a) for a in args]
-        self.corner_db, self.edge1_db, self.edge2_db = [bytearray(r) for r in results]
+        self.corner_db = bytearray(b'\xff' * self.CORNER_SIZE)
+        self.edge1_db  = bytearray(b'\xff' * self.EDGE_SIZE)
+        self.edge2_db  = bytearray(b'\xff' * self.EDGE_SIZE)
+        self._bfs(self.corner_db, corner_index, max_depth)
+        self._bfs(self.edge1_db,  edge1_index,  max_depth)
+        self._bfs(self.edge2_db,  edge2_index,  max_depth)
+
+    @staticmethod
+    def _bfs(db: bytearray, index_fn, max_depth: int | None) -> None:
+        start_idx = index_fn(SOLVED)
+        db[start_idx] = 0
+        queue: deque = deque([(SOLVED, 0)])
+        while queue:
+            state, depth = queue.popleft()
+            if max_depth is not None and depth >= max_depth:
+                continue
+            for mv in MOVE_NAMES:
+                next_state = apply_move(state, mv)
+                idx = index_fn(next_state)
+                if db[idx] == 255:
+                    db[idx] = depth + 1
+                    queue.append((next_state, depth + 1))
 
     def h(self, state: CubeState) -> int:
         """admissible 휴리스틱: 세 DB 중 최댓값 (255=미방문 → 20으로 대체)"""
@@ -154,7 +140,7 @@ class PatternDB:
             db = cls.load(corner_path, edge1_path, edge2_path)
             print("완료")
             return db
-        print("패턴 DB 생성 중... (3-way 병렬 빌드, 10~20분 소요)")
+        print("패턴 DB 생성 중... (30~40분 소요)")
         db = cls(max_depth=None)
         db.save(corner_path, edge1_path, edge2_path)
         print("패턴 DB 저장 완료")
